@@ -1,0 +1,80 @@
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
+from lightgbm import LGBMClassifier
+from sklearn.metrics import accuracy_score, classification_report
+from sklearn.preprocessing import LabelEncoder
+
+# 1. Генерация данных с историей предпочтений
+data = {
+    "student_id": [1, 2, 3, 4, 1, 2, 3],
+    "event_id": [101, 102, 103, 101, 102, 103, 104],
+    "event_type": ["лекция", "семинар", "концерт", "лекция", "семинар", "концерт", "спортивное"],
+    "attended": [1, 0, 1, 1, 1, 0, 1],
+    "faculty": ["ИТ", "Гуманитарный", "ИТ", "Экономика", "ИТ", "Гуманитарный", "ИТ"],
+    "course_year": [1, 2, 1, 3, 1, 2, 1],
+    "student_interest": ["технологии", "искусство", "спорт", "экономика", "технологии", "искусство", "спорт"],
+}
+
+df = pd.DataFrame(data)
+
+# 2. Предварительная обработка
+# Кодируем категориальные признаки
+label_encoders = {}
+for col in ["event_type", "faculty", "student_interest"]:
+    le = LabelEncoder()
+    df[col] = le.fit_transform(df[col])
+    label_encoders[col] = le
+
+# Целевая переменная и признаки
+X = df.drop(columns=["attended", "student_id", "event_id"])
+y = df["attended"]
+
+# Разделение данных
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# 3. Обучение модели с использованием LightGBM
+model = LGBMClassifier(random_state=42)
+model.fit(X_train, y_train)
+
+# Прогнозирование
+y_pred = model.predict(X_test)
+
+# Оценка модели
+print(f"Точность модели: {accuracy_score(y_test, y_pred):.2f}")
+print("\nКлассификационный отчёт:")
+print(classification_report(y_test, y_pred))
+
+# 4. Визуализация популярности типов мероприятий
+plt.figure(figsize=(8, 6))
+sns.countplot(x="event_type", data=df)
+plt.title("Популярность типов мероприятий")
+plt.xlabel("Тип мероприятия")
+plt.ylabel("Количество посещений")
+plt.xticks(ticks=np.arange(len(label_encoders["event_type"].classes_)),
+           labels=label_encoders["event_type"].classes_)
+plt.show()
+
+# 5. Рекомендации на основе интересов
+# Группируем студентов по интересам и рекомендуем самые популярные мероприятия
+student_interest_group = df.groupby("student_interest")["event_type"].agg(lambda x: x.mode()[0]).reset_index()
+student_interest_group["event_name"] = student_interest_group["event_type"].apply(
+    lambda x: label_encoders["event_type"].inverse_transform([x])[0]
+)
+
+print("\nРекомендации по интересам:")
+print(student_interest_group)
+
+# 6. Пример рекомендации для нового студента
+new_student = {
+    "course_year": [1],
+    "event_type": [label_encoders["event_type"].transform(["семинар"])[0]],
+    "faculty": [label_encoders["faculty"].transform(["ИТ"])[0]],
+    "student_interest": [label_encoders["student_interest"].transform(["технологии"])[0]],
+}
+
+new_student_df = pd.DataFrame(new_student)
+prediction = model.predict(new_student_df)
+print(f"\nПрогноз посещаемости для нового студента: {'Посетит' if prediction[0] == 1 else 'Не посетит'}")
